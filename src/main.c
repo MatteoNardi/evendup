@@ -29,27 +29,27 @@ static int print_event(struct input_event *ev) {
 
 int main(int argc, char **argv) {
 	int err = 0;
-	int fd, uifd1, uifd2;
-	struct libevdev *source;
-	struct libevdev_uinput *dest1, *dest2;
+	int fd = -1, uifd1 = -1, uifd2 = -1;
+	struct libevdev *source = NULL;
+	struct libevdev_uinput *dest1 = NULL, *dest2 = NULL;
 	struct input_event ev;
 
 	if (argc < 2) {
 		printf("Usage:\n");
 		printf("keygrabber <input_device>\n");
-		goto out_a;
+		goto finish;
 	}
 
 	fd = open(argv[1], O_RDONLY);
 	if (fd < 0) {
 		perror("Error opening source device");
-		goto out_a;
+		goto finish;
 	}
 
 	err = libevdev_new_from_fd(fd, &source);
 	if (err) {
 		perror("Error initializing source device");
-		goto out_b;
+		goto finish;
 	}
 
 	err = libevdev_grab(source, LIBEVDEV_GRAB);
@@ -58,25 +58,26 @@ int main(int argc, char **argv) {
 	uifd1 = open("/dev/uinput", O_RDWR);
 	if (uifd1 < 0) {
 		perror("Error opening uinput (Needed to create new device)");
-		goto out_c;
+		goto finish;
 	}
 	err = libevdev_uinput_create_from_device(source, uifd1, &dest1);
 	if (err != 0) {
 		perror("Error copying device");
-		goto out_d;
+		goto finish;
 	}
 	printf("Copied %s to %s\n", argv[1],
 	       libevdev_uinput_get_devnode(dest1));
+	fflush(stdout);
 
 	uifd2 = open("/dev/uinput", O_RDWR);
 	if (uifd1 < 0) {
 		perror("Error opening uinput (Needed to create new device)");
-		goto out_e;
+		goto finish;
 	}
 	err = libevdev_uinput_create_from_device(source, uifd2, &dest2);
 	if (err != 0) {
 		perror("Error copying device 2");
-		goto out_f;
+		goto finish;
 	}
 	printf("Copied %s to %s\n", argv[1],
 	       libevdev_uinput_get_devnode(dest2));
@@ -87,7 +88,7 @@ int main(int argc, char **argv) {
 		   source,
 		   LIBEVDEV_READ_FLAG_NORMAL | LIBEVDEV_READ_FLAG_BLOCKING,
 		   &ev) == LIBEVDEV_READ_STATUS_SUCCESS) {
-		print_event(&ev);
+		// print_event(&ev);
 		err = libevdev_uinput_write_event(dest1, ev.type, ev.code,
 						  ev.value);
 		if (err != 0) perror("write 1");
@@ -96,17 +97,12 @@ int main(int argc, char **argv) {
 		if (err != 0) perror("write 2");
 	}
 
-	libevdev_uinput_destroy(dest2);
-out_f:
-	close(uifd2);
-out_e:
-	libevdev_uinput_destroy(dest1);
-out_d:
-	close(uifd1);
-out_c:
-	libevdev_free(source);
-out_b:
-	close(fd);
-out_a:
+finish:
+	if (dest2) libevdev_uinput_destroy(dest2);
+	if (uifd2 >= 0) close(uifd2);
+	if (dest1) libevdev_uinput_destroy(dest1);
+	if (uifd1 >= 0) close(uifd1);
+	if (source) libevdev_free(source);
+	if (fd >= 0) close(fd);
 	return err;
 }
