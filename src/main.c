@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
 
 	if (argc < 2) {
 		printf("Usage:\n");
-		printf("keygrabber <input_device>\n");
+		printf("evendup <input_device>\n");
 		goto finish;
 	}
 
@@ -70,7 +70,7 @@ int main(int argc, char **argv) {
 	fflush(stdout);
 
 	uifd2 = open("/dev/uinput", O_RDWR);
-	if (uifd1 < 0) {
+	if (uifd2 < 0) {
 		perror("Error opening uinput (Needed to create new device)");
 		goto finish;
 	}
@@ -81,6 +81,7 @@ int main(int argc, char **argv) {
 	}
 	printf("Copied %s to %s\n", argv[1],
 	       libevdev_uinput_get_devnode(dest2));
+	fflush(stdout);
 
 	// TODO:
 	// https://www.freedesktop.org/software/libevdev/doc/1.7.0/syn_dropped.html
