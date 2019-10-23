@@ -1,37 +1,29 @@
-
 #include <errno.h>
 #include <fcntl.h>
+#include <libevdev/libevdev-uinput.h>
+#include <libevdev/libevdev.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <libevdev/libevdev-uinput.h>
-#include <libevdev/libevdev.h>
-
-static int print_event(struct input_event *ev) {
-	if (ev->type == EV_SYN)
-		printf(
-		    "Event: time %ld.%06ld, ++++++++++++++++++++ %s "
-		    "+++++++++++++++\n",
-		    ev->input_event_sec, ev->input_event_usec,
-		    libevdev_event_type_get_name(ev->type));
-	else
-		printf(
-		    "Event: time %ld.%06ld, type %d (%s), code %d (%s), value "
-		    "%d\n",
-		    ev->input_event_sec, ev->input_event_usec, ev->type,
-		    libevdev_event_type_get_name(ev->type), ev->code,
-		    libevdev_event_code_get_name(ev->type, ev->code),
-		    ev->value);
-	return 0;
+void copy_event(struct input_event *ev, struct libevdev_uinput *clone1,
+		struct libevdev_uinput *clone2) {
+	int err;
+	err =
+	    libevdev_uinput_write_event(clone1, ev->type, ev->code, ev->value);
+	if (err != 0) perror("write 1");
+	err =
+	    libevdev_uinput_write_event(clone2, ev->type, ev->code, ev->value);
+	if (err != 0) perror("write 2");
 }
 
 int main(int argc, char **argv) {
 	int err = 0;
-	int fd = -1, uifd1 = -1, uifd2 = -1;
+	int fd = -1;
 	struct libevdev *source = NULL;
-	struct libevdev_uinput *dest1 = NULL, *dest2 = NULL;
+	struct libevdev_uinput *clone1 = NULL, *clone2 = NULL;
 	struct input_event ev;
 
 	if (argc < 2) {
@@ -55,54 +47,49 @@ int main(int argc, char **argv) {
 	err = libevdev_grab(source, LIBEVDEV_GRAB);
 	if (err) perror("Error grabbing device");
 
-	uifd1 = open("/dev/uinput", O_RDWR);
-	if (uifd1 < 0) {
-		perror("Error opening uinput (Needed to create new device)");
-		goto finish;
-	}
-	err = libevdev_uinput_create_from_device(source, uifd1, &dest1);
+	err = libevdev_uinput_create_from_device(
+	    source, LIBEVDEV_UINPUT_OPEN_MANAGED, &clone1);
 	if (err != 0) {
 		perror("Error copying device");
 		goto finish;
 	}
 	printf("Copied %s to %s\n", argv[1],
-	       libevdev_uinput_get_devnode(dest1));
+	       libevdev_uinput_get_devnode(clone1));
 	fflush(stdout);
 
-	uifd2 = open("/dev/uinput", O_RDWR);
-	if (uifd2 < 0) {
-		perror("Error opening uinput (Needed to create new device)");
-		goto finish;
-	}
-	err = libevdev_uinput_create_from_device(source, uifd2, &dest2);
+	err = libevdev_uinput_create_from_device(
+	    source, LIBEVDEV_UINPUT_OPEN_MANAGED, &clone2);
 	if (err != 0) {
 		perror("Error copying device 2");
 		goto finish;
 	}
 	printf("Copied %s to %s\n", argv[1],
-	       libevdev_uinput_get_devnode(dest2));
+	       libevdev_uinput_get_devnode(clone2));
 	fflush(stdout);
 
-	// TODO:
-	// https://www.freedesktop.org/software/libevdev/doc/1.7.0/syn_dropped.html
-	while (libevdev_next_event(
-		   source,
-		   LIBEVDEV_READ_FLAG_NORMAL | LIBEVDEV_READ_FLAG_BLOCKING,
-		   &ev) == LIBEVDEV_READ_STATUS_SUCCESS) {
-		// print_event(&ev);
-		err = libevdev_uinput_write_event(dest1, ev.type, ev.code,
-						  ev.value);
-		if (err != 0) perror("write 1");
-		err = libevdev_uinput_write_event(dest2, ev.type, ev.code,
-						  ev.value);
-		if (err != 0) perror("write 2");
-	}
+	do {
+		err = libevdev_next_event(
+		    source,
+		    LIBEVDEV_READ_FLAG_NORMAL | LIBEVDEV_READ_FLAG_BLOCKING,
+		    &ev);
+		if (err == LIBEVDEV_READ_STATUS_SYNC) {
+			while (err == LIBEVDEV_READ_STATUS_SYNC) {
+				copy_event(&ev, clone1, clone2);
+				err = libevdev_next_event(
+				    source, LIBEVDEV_READ_FLAG_SYNC, &ev);
+			}
+		} else if (err == LIBEVDEV_READ_STATUS_SUCCESS)
+			copy_event(&ev, clone1, clone2);
+	} while (err == LIBEVDEV_READ_STATUS_SYNC ||
+		 err == LIBEVDEV_READ_STATUS_SUCCESS || err == -EAGAIN);
+
+	if (err != LIBEVDEV_READ_STATUS_SUCCESS && err != -EAGAIN)
+		fprintf(stderr, "Failed to handle events: %s\n",
+			strerror(-err));
 
 finish:
-	if (dest2) libevdev_uinput_destroy(dest2);
-	if (uifd2 >= 0) close(uifd2);
-	if (dest1) libevdev_uinput_destroy(dest1);
-	if (uifd1 >= 0) close(uifd1);
+	if (clone2) libevdev_uinput_destroy(clone2);
+	if (clone1) libevdev_uinput_destroy(clone1);
 	if (source) libevdev_free(source);
 	if (fd >= 0) close(fd);
 	return err;
