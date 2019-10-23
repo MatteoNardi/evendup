@@ -1,4 +1,4 @@
-project('evendup', 'c')
+project('evendup', 'c', license: 'MIT')
 
 evdev = dependency('libevdev')
 

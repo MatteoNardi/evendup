@@ -1,13 +1,11 @@
 # evendup
 
 Evendup duplicates an input device, making it possibile to use it with multiple
-applications (Even if they grab it for exclusive use).
-
-evendup will:
+applications (Even if they grab it for exclusive use). Evendup will:
 - Open the provided input device.
 - Issue a IEVIOCGRAB ioctl, so that other applications won't steal it from us.
-- Create two clones and print their path to stdout.
-- Loop input events and copy then to all clones
+- Create two clones.
+- Loop input events and copy them to all clones
 
 ## Motivation (Kodi + HomeAssistant)
 
@@ -17,7 +15,7 @@ only users of a given input device.
 
 Basically, evendup is a workaround against unnecessary IEVIOCGRAB ioctl calls.
 
-## Installation (From source)
+## Installation from source and example usage
 
 This is how it can be installed from source on a RaspberryPI Buster
 ```
@@ -28,6 +26,7 @@ meson build
 cd build
 ninja
 sudo ninja install
+sudo systemctl enable evendup@usb-flirc.tv_flirc-if01-event-kbd.service
 ```
 
 ## Manual start
@@ -40,23 +39,11 @@ sudo systemctl start home-assistant@homeassistant.service
 sudo systemctl start kodi
 ```
 
-## Systemd autostart
+## Running without root permissions
 
-```
-sudo systemctl enable evendup@usb-flirc.tv_flirc-if01-event-kbd.service
-```
-
-If you'd like to run it in a user session:
-
+You'll need to fix uinput permissions:
 ```
 sudo apt-get install acl
-systemctl --user enable evendup.service
-loginctl enable-linger `whoami`
-```
-
-Also edit the unit file to fix uinput permissions:
-
-```
 ExecStartPre = sudo setfacl -m u:%u:rw /dev/uinput
 ```
 
