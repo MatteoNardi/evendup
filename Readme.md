@@ -27,6 +27,7 @@ cd evendup
 meson build
 cd build
 ninja
+sudo ninja install
 ```
 
 ## Manual start
@@ -42,20 +43,7 @@ sudo systemctl start kodi
 ## Systemd autostart
 
 ```
-[Unit]
-Description=Evendup
-Before = home-assistant.service kodi.service
-
-[Service]
-Type = simple
-ExecStart = %h/evendup/build/evendup /dev/input/by-id/usb-flirc.tv_flirc-if01-event-kbd
-StandardOutput=journal
-StandardError=journal
-Restart = always
-RestartSecs = 20
-
-[Install]
-WantedBy = default.target
+sudo systemctl enable evendup@usb-flirc.tv_flirc-if01-event-kbd.service
 ```
 
 If you'd like to run it in a user session:
